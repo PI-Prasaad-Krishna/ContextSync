@@ -12,5 +12,9 @@
 # OS-specific
 .DS_Store
 
+# IDEs
+.vscode/
+.idea/
+
 # ContextSync auto-generated file
 .context.md

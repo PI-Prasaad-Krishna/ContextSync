@@ -67,11 +67,9 @@ func handleWatch() error {
 				// The timer fired because 2 seconds passed since the last save.
 				// We now process the entire accumulated batch safely.
 				if len(changedFiles) > 0 {
-					fmt.Printf("\n--- Processing batch of %d files ---\n", len(changedFiles))
-					for file := range changedFiles {
-						fmt.Println("-", file)
+					if err := syncBatchToContext(changedFiles); err != nil {
+						log.Printf("Error syncing batch: %v\n", err)
 					}
-					fmt.Println("------------------------------------")
 
 					// Clear the map for the next batch
 					changedFiles = make(map[string]struct{})

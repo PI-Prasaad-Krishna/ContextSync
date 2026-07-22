@@ -8,7 +8,7 @@ import (
 
 // syncBatchToContext is the MVP "Sync Bridge".
 // It takes a batch of changed file paths and appends a simple log to .context.md.
-// In the future, this is where we would call an LLM API to summarize the actual code diffs.
+// This gives AI agents raw context about what files they should inspect.
 func syncBatchToContext(files map[string]struct{}) error {
 	if len(files) == 0 {
 		return nil

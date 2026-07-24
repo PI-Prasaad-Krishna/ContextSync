@@ -11,16 +11,17 @@ By pointing your AI agent to read this single file instead of the whole reposito
 ## Features
 
 - Zero Dependencies: Written in Go, it compiles to a single binary.
-- Smart Watcher: Recursively monitors the working directory while dynamically respecting your `.gitignore` rules (using `go-gitignore`).
-- Debouncer: Batches rapid file saves (e.g., "Save All") into a single event to prevent API/CPU overload.
-- Sync Bridge: Appends timestamped logs of changed files to `.context.md` for AI consumption.
+- Dynamic Watcher: Recursively monitors the working directory while dynamically attaching to newly created folders and respecting your `.gitignore` rules on the fly (using `go-gitignore`).
+- Debouncer: Batches rapid file saves (e.g., "Save All") into a single event to prevent CPU overload.
+- Super Context (Git Diffs): Executes `git diff` to extract exact code changes and appends beautifully formatted markdown diffs directly into `.context.md`.
+- Rolling Window Rotation: Automatically prunes the oldest sync events from the context file when it reaches your configured limit, preventing amnesia wipes and token bloat!
 
 ## Installation
 
-Ensure you have Go installed, then build the binary:
-
+1. Clone the repository
+2. Build the binary:
 ```bash
-go build
+go build -o contextsync.exe ./cmd/contextsync
 ```
 
 ## Usage
@@ -32,10 +33,14 @@ Initialize a boilerplate context file in your project root:
 ```
 
 Start the file-watching daemon:
-
 ```bash
-./contextsync watch
+./contextsync.exe watch --debounce=2s --max-events=15 --out=.context.md
 ```
+
+### CLI Flags
+- `--debounce`: Time to wait after a file save before grouping them into a batch (default: `2s`)
+- `--max-events`: The rolling window limit. Once this many events are in `.context.md`, the oldest events are pruned (default: `15`)
+- `--out`: The name of the context file (default: `.context.md`)
 
 ## License
 

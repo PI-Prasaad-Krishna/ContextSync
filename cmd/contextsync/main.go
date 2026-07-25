@@ -2,42 +2,60 @@ package main
 
 import (
 	"flag"
-	"fmt"
+	"log/slog"
 	"os"
 	"time"
 )
 
 func main() {
 	var cfg Config
+	
+	// Defaults
+	cfg.DebounceDuration = 2 * time.Second
+	cfg.MaxEvents = 15
+	cfg.OutFile = ".context.md"
+	cfg.Debug = false
+
+	// Attempt to load from JSON
+	loadConfig(&cfg)
 
 	initCmd := flag.NewFlagSet("init", flag.ExitOnError)
-	initCmd.StringVar(&cfg.OutFile, "out", ".context.md", "Output file for context")
+	initCmd.StringVar(&cfg.OutFile, "out", cfg.OutFile, "Output file for context")
 
 	watchCmd := flag.NewFlagSet("watch", flag.ExitOnError)
-	watchCmd.DurationVar(&cfg.DebounceDuration, "debounce", 2*time.Second, "Debounce duration for rapid saves")
-	watchCmd.IntVar(&cfg.MaxEvents, "max-events", 15, "Maximum number of sync events to keep in the context file")
-	watchCmd.StringVar(&cfg.OutFile, "out", ".context.md", "Output file for context")
+	watchCmd.DurationVar(&cfg.DebounceDuration, "debounce", cfg.DebounceDuration, "Debounce duration for rapid saves")
+	watchCmd.IntVar(&cfg.MaxEvents, "max-events", cfg.MaxEvents, "Maximum number of sync events to keep in the context file")
+	watchCmd.StringVar(&cfg.OutFile, "out", cfg.OutFile, "Output file for context")
+	watchCmd.BoolVar(&cfg.Debug, "debug", cfg.Debug, "Enable verbose debug logging")
 
 	if len(os.Args) < 2 {
-		fmt.Println("Expected 'init' or 'watch' subcommands")
+		slog.Error("Expected 'init' or 'watch' subcommands")
 		os.Exit(1)
 	}
+
+	// Initialize Logger
+	logLevel := slog.LevelInfo
+	if cfg.Debug {
+		logLevel = slog.LevelDebug
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: logLevel})))
 
 	switch os.Args[1] {
 	case "init":
 		initCmd.Parse(os.Args[2:])
 		if err := handleInit(cfg); err != nil {
-			fmt.Printf("Error initializing context: %v\n", err)
+			slog.Error("Error initializing context", "err", err)
 			os.Exit(1)
 		}
 	case "watch":
 		watchCmd.Parse(os.Args[2:])
-		if err := handleWatch(cfg); err != nil {
-			fmt.Printf("Daemon error: %v\n", err)
+		cache := NewFileCache()
+		if err := handleWatch(cfg, cache); err != nil {
+			slog.Error("Daemon error", "err", err)
 			os.Exit(1)
 		}
 	default:
-		fmt.Println("Expected 'init' or 'watch' subcommands")
+		slog.Error("Expected 'init' or 'watch' subcommands")
 		os.Exit(1)
 	}
 }

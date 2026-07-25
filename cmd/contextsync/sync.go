@@ -1,17 +1,19 @@
 package main
 
 import (
-	"bytes"
 	"fmt"
+	"log/slog"
+	"net/url"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
 // syncBatchToContext is the MVP "Sync Bridge".
-// It takes a batch of changed file paths, extracts the git diff, and appends it to .context.md.
-func syncBatchToContext(cfg Config, files map[string]struct{}) error {
+// It takes a batch of changed file paths, calculates native incremental diffs, and appends it to .context.md.
+func syncBatchToContext(cfg Config, cache *FileCache, files map[string]struct{}) error {
 	if len(files) == 0 {
 		return nil
 	}
@@ -31,7 +33,10 @@ func syncBatchToContext(cfg Config, files map[string]struct{}) error {
 
 	// Write each file diff
 	for file := range files {
-		diff := getFileDiff(file)
+		diff := getFileDiff(cache, file)
+		if diff == "" {
+			continue // skip files with no meaningful text changes
+		}
 		if _, err := f.WriteString(diff); err != nil {
 			f.Close()
 			return fmt.Errorf("failed to write file entry: %w", err)
@@ -39,32 +44,57 @@ func syncBatchToContext(cfg Config, files map[string]struct{}) error {
 	}
 	f.Close()
 
-	fmt.Printf("Successfully synced %d files to %s\n", len(files), cfg.OutFile)
+	slog.Info("Successfully synced files", "count", len(files), "out", cfg.OutFile)
 
 	// After appending, enforce the rolling window rotation
 	return rotateContextFile(cfg)
 }
 
-func getFileDiff(file string) string {
-	cmd := exec.Command("git", "diff", "HEAD", "--", file)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	_ = cmd.Run() // Ignore errors (e.g., if it's untracked or no git repo)
+func getFileDiff(cache *FileCache, file string) string {
+	contentBytes, err := os.ReadFile(file)
+	if err != nil {
+		// Also remove from cache if deleted
+		cache.mu.Lock()
+		delete(cache.files, file)
+		cache.mu.Unlock()
+		return fmt.Sprintf("- **%s** (File deleted or unreadable)\n", file)
+	}
+	
+	content := string(contentBytes)
+	oldContent, exists := cache.Get(file)
+	
+	// Update cache immediately
+	cache.Set(file, content)
 
-	diff := out.String()
-	if diff == "" {
-		// Fallback for new/untracked files
-		content, err := os.ReadFile(file)
-		if err != nil {
-			return fmt.Errorf("- %s (File deleted or unreadable)\n", file).Error()
-		}
-		truncated := string(content)
+	if !exists {
+		// Fallback for new/untracked files we haven't cached yet
+		truncated := content
 		if len(truncated) > 3000 {
 			truncated = truncated[:3000] + "\n...[Content truncated due to size]"
 		}
-		return fmt.Sprintf("- **%s** (Untracked/New File):\n```\n%s\n```\n", file, truncated)
+		return fmt.Sprintf("- **%s** (Initial Cache):\n```\n%s\n```\n", file, truncated)
 	}
-	return fmt.Sprintf("- **%s**:\n```diff\n%s\n```\n", file, diff)
+
+	dmp := diffmatchpatch.New()
+	diffs := dmp.DiffMain(oldContent, content, false)
+	dmp.DiffCleanupSemantic(diffs)
+
+	patches := dmp.PatchMake(oldContent, diffs)
+	patchText := dmp.PatchToText(patches)
+
+	if patchText == "" {
+		return ""
+	}
+
+	// diffmatchpatch url-encodes strings (like %0A for newline). Decode them for readability.
+	decodedPatch, err := url.QueryUnescape(patchText)
+	if err == nil {
+		patchText = decodedPatch
+	}
+
+	// Clean up patch text for better markdown formatting
+	patchText = strings.TrimSpace(patchText)
+	return fmt.Sprintf("- **%s**:\n```diff\n%s\n```\n", file, patchText)
 }
 
 // rotateContextFile ensures the context file doesn't exceed the configured MaxEvents
@@ -81,7 +111,7 @@ func rotateContextFile(cfg Config) error {
 	// The first split chunk is everything before the first event (our boilerplate header)
 	// So len(events) - 1 is the number of actual sync events.
 	if len(events)-1 > cfg.MaxEvents {
-		fmt.Printf("Rotating context file (exceeded %d max events)\n", cfg.MaxEvents)
+		slog.Info("Rotating context file", "max_events", cfg.MaxEvents)
 		
 		newContent := events[0]
 		// Slice off the oldest events, keeping only the last MaxEvents

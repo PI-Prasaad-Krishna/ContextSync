@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -15,7 +15,7 @@ import (
 )
 
 // handleWatch starts a background daemon that monitors the directory for changes.
-func handleWatch(cfg Config) error {
+func handleWatch(cfg Config, cache *FileCache) error {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return fmt.Errorf("failed to create watcher: %w", err)
@@ -62,6 +62,7 @@ func handleWatch(cfg Config) error {
 				}
 
 				if ignoreParser.MatchesPath(cleanPath) {
+					slog.Debug("Ignored file due to gitignore", "file", event.Name)
 					continue
 				}
 
@@ -80,17 +81,19 @@ func handleWatch(cfg Config) error {
 							if ignoreParser.MatchesPath(wClean+"/") || walkInfo.Name() == ".git" {
 								return filepath.SkipDir
 							}
+							slog.Debug("Dynamically watching new directory", "dir", path)
 							return watcher.Add(path)
 						}
 						return nil
 					})
 					if err != nil {
-						log.Println("Error dynamically adding directory:", err)
+						slog.Error("Error dynamically adding directory", "err", err)
 					}
 				}
 
 				if event.Op&fsnotify.Write != 0 || event.Op&fsnotify.Create != 0 {
 					if !isDir { // Only batch actual files
+						slog.Debug("Detected file save", "file", event.Name)
 						changedFiles[event.Name] = struct{}{}
 						timer.Reset(cfg.DebounceDuration)
 					}
@@ -98,8 +101,9 @@ func handleWatch(cfg Config) error {
 
 			case <-timer.C:
 				if len(changedFiles) > 0 {
-					if err := syncBatchToContext(cfg, changedFiles); err != nil {
-						log.Printf("Error syncing batch: %v\n", err)
+					slog.Info("Syncing batch to context", "count", len(changedFiles))
+					if err := syncBatchToContext(cfg, cache, changedFiles); err != nil {
+						slog.Error("Error syncing batch", "err", err)
 					}
 					changedFiles = make(map[string]struct{})
 				}
@@ -108,7 +112,7 @@ func handleWatch(cfg Config) error {
 				if !ok {
 					return
 				}
-				log.Println("Watcher error:", err)
+				slog.Error("Watcher error", "err", err)
 			}
 		}
 	}()
@@ -125,6 +129,7 @@ func handleWatch(cfg Config) error {
 			return filepath.SkipDir
 		}
 		if info.IsDir() {
+			slog.Debug("Adding watch", "dir", path)
 			return watcher.Add(path)
 		}
 		return nil
@@ -133,13 +138,13 @@ func handleWatch(cfg Config) error {
 		return fmt.Errorf("failed to add directories to watcher: %w", err)
 	}
 
-	fmt.Println("ContextSync daemon is now watching the current directory...")
+	slog.Info("ContextSync daemon is now watching the current directory...")
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 	sig := <-sigChan
-	fmt.Printf("\nReceived signal (%v). Shutting down ContextSync gracefully...\n", sig)
+	slog.Info("Received shutdown signal. Exiting gracefully...", "signal", sig)
 
 	return nil
 }

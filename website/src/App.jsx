@@ -91,7 +91,13 @@ function Docs() {
   return (
     <div className="docs-page animate-up">
       <h2>Quick Start</h2>
-      <p>Initialize a boilerplate context file in your project root. This creates a highly optimized markdown file that you can feed directly to your AI agent (like Claude, GPT-4, or Cursor).</p>
+      <p>ContextSync is a standalone binary. Once downloaded:</p>
+      <ol style={{marginBottom: '1.5rem', marginLeft: '2rem'}}>
+        <li>Extract the downloaded archive (<code>.zip</code> or <code>.tar.gz</code>).</li>
+        <li>Place the extracted <code>contextsync</code> file in your project folder (or system PATH).</li>
+      </ol>
+
+      <p>Initialize a boilerplate context file in your project root. This creates a highly optimized markdown file that you can feed directly to your AI agent.</p>
       <pre><code>./contextsync init</code></pre>
 
       <p>Start the file-watching daemon. It will listen for file saves, debounce them, and instantly inject the exact diffs into your `.context.md` file.</p>
@@ -164,10 +170,10 @@ function App() {
         if (data.assets) {
           const links = { ...downloads };
           data.assets.forEach(asset => {
-            if (asset.name.includes('windows')) links.windows = asset.browser_download_url;
-            if (asset.name.includes('darwin-amd64')) links.macIntel = asset.browser_download_url;
-            if (asset.name.includes('darwin-arm64')) links.macArm = asset.browser_download_url;
-            if (asset.name.includes('linux')) links.linux = asset.browser_download_url;
+            if (asset.name.includes('windows') && asset.name.endsWith('.zip')) links.windows = asset.browser_download_url;
+            if (asset.name.includes('darwin-amd64') && asset.name.endsWith('.tar.gz')) links.macIntel = asset.browser_download_url;
+            if (asset.name.includes('darwin-arm64') && asset.name.endsWith('.tar.gz')) links.macArm = asset.browser_download_url;
+            if (asset.name.includes('linux') && asset.name.endsWith('.tar.gz')) links.linux = asset.browser_download_url;
           });
           setDownloads(links);
         }

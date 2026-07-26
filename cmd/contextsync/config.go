@@ -13,6 +13,7 @@ type Config struct {
 	MaxEvents        int           `json:"max_events"`
 	OutFile          string        `json:"out"`
 	Debug            bool          `json:"debug"`
+	BaseContextFile  string        `json:"base_context_file"`
 }
 
 // loadConfig tries to read a .contextsync.json file and apply it to the config

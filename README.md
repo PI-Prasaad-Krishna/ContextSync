@@ -27,9 +27,14 @@ Imagine a moderate-sized project with 100 source files.
 
 ## Best Practices (Hybrid Memory)
 
-Because ContextSync only records your most *recent* file diffs, the AI will know exactly what you just did, but it might lose sight of the big picture. For the absolute best results, use a **Hybrid Memory Strategy**:
-1. **Long-Term Memory:** Feed the AI a static `Architecture.md` file that explains your overall project goals, structs, and patterns.
-2. **Short-Term Memory:** Feed the AI `.context.md` so it has a perfect, second-by-second timeline of your most recent thought process and code edits.
+Because ContextSync only records your most *recent* file diffs, the AI will know exactly what you just did, but it might lose sight of the big picture. 
+
+To solve this, ContextSync features a native **Base Context** pipeline. 
+1. **Long-Term Memory:** Write a static `Architecture.md` file that explains your overall project goals, structs, and patterns.
+2. **Configuration:** Add `"base_context_file": "Architecture.md"` to your `.contextsync.json`.
+3. **The Magic:** On every file save, ContextSync dynamically copies your entire `Architecture.md` and glues it to the very top of `.context.md`, right above the rolling diffs.
+
+You just hand the AI `.context.md`, and it instantly has both a high-level understanding of the whole project AND a perfect timeline of your recent code edits!
 
 ## Installation
 
@@ -63,10 +68,11 @@ You can customize behavior using a `.contextsync.json` file in your project root
   "debounce": "2s",
   "max_events": 15,
   "out": ".context.md",
+  "base_context_file": "Architecture.md",
   "debug": false
 }
 ```
-*CLI equivalents: `--debounce`, `--max-events`, `--out`, `--debug`*
+*CLI equivalents: `--debounce`, `--max-events`, `--out`, `--base-context`, `--debug`*
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for details.

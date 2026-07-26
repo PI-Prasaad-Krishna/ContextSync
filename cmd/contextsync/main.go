@@ -15,18 +15,21 @@ func main() {
 	cfg.MaxEvents = 15
 	cfg.OutFile = ".context.md"
 	cfg.Debug = false
+	cfg.BaseContextFile = ""
 
 	// Attempt to load from JSON
 	loadConfig(&cfg)
 
 	initCmd := flag.NewFlagSet("init", flag.ExitOnError)
 	initCmd.StringVar(&cfg.OutFile, "out", cfg.OutFile, "Output file for context")
+	initCmd.StringVar(&cfg.BaseContextFile, "base-context", cfg.BaseContextFile, "Static markdown file to prepend")
 
 	watchCmd := flag.NewFlagSet("watch", flag.ExitOnError)
 	watchCmd.DurationVar(&cfg.DebounceDuration, "debounce", cfg.DebounceDuration, "Debounce duration for rapid saves")
 	watchCmd.IntVar(&cfg.MaxEvents, "max-events", cfg.MaxEvents, "Maximum number of sync events to keep in the context file")
 	watchCmd.StringVar(&cfg.OutFile, "out", cfg.OutFile, "Output file for context")
 	watchCmd.BoolVar(&cfg.Debug, "debug", cfg.Debug, "Enable verbose debug logging")
+	watchCmd.StringVar(&cfg.BaseContextFile, "base-context", cfg.BaseContextFile, "Static markdown file to prepend")
 
 	if len(os.Args) < 2 {
 		slog.Error("Expected 'init' or 'watch' subcommands")

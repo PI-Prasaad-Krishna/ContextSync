@@ -11,6 +11,23 @@ import (
 	"github.com/sergi/go-diff/diffmatchpatch"
 )
 
+// getBoilerplate generates the static top half of the context file.
+func getBoilerplate(cfg Config) string {
+	base := "# Project Context\n\nThis file is automatically maintained by ContextSync. \nIt contains a dense, continuously updated summary of recent file changes to provide context to AI coding agents.\n"
+	
+	if cfg.BaseContextFile != "" {
+		content, err := os.ReadFile(cfg.BaseContextFile)
+		if err == nil {
+			base += "\n## Architecture & Rules\n" + string(content) + "\n"
+		} else {
+			base += fmt.Sprintf("\n> [!WARNING]\n> Could not read base_context_file: %s\n", cfg.BaseContextFile)
+		}
+	}
+	
+	base += "\n## Recent Changes\n"
+	return base
+}
+
 // syncBatchToContext is the MVP "Sync Bridge".
 // It takes a batch of changed file paths, calculates native incremental diffs, and appends it to .context.md.
 func syncBatchToContext(cfg Config, cache *FileCache, files map[string]struct{}) error {
@@ -18,36 +35,53 @@ func syncBatchToContext(cfg Config, cache *FileCache, files map[string]struct{})
 		return nil
 	}
 
-	// Open the context file in append mode. Create it if it somehow doesn't exist.
-	f, err := os.OpenFile(cfg.OutFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to open context file for sync: %w", err)
-	}
-
 	timestamp := time.Now().Format(time.RFC1123)
-	header := fmt.Sprintf("\n### Sync Event: %s\n", timestamp)
-	if _, err := f.WriteString(header); err != nil {
-		f.Close()
-		return fmt.Errorf("failed to write header: %w", err)
-	}
-
-	// Write each file diff
+	newEventBody := fmt.Sprintf("%s\n", timestamp)
+	
+	hasChanges := false
 	for file := range files {
 		diff := getFileDiff(cache, file)
 		if diff == "" {
 			continue // skip files with no meaningful text changes
 		}
-		if _, err := f.WriteString(diff); err != nil {
-			f.Close()
-			return fmt.Errorf("failed to write file entry: %w", err)
+		hasChanges = true
+		newEventBody += diff
+	}
+
+	if !hasChanges {
+		return nil
+	}
+
+	// Extract existing events
+	var events []string
+	contentBytes, err := os.ReadFile(cfg.OutFile)
+	if err == nil {
+		parts := strings.Split(string(contentBytes), "\n### Sync Event: ")
+		if len(parts) > 1 {
+			events = parts[1:]
 		}
 	}
-	f.Close()
 
-	slog.Info("Successfully synced files", "count", len(files), "out", cfg.OutFile)
+	// Append the new event
+	events = append(events, newEventBody)
 
-	// After appending, enforce the rolling window rotation
-	return rotateContextFile(cfg)
+	// Enforce rolling window
+	if len(events) > cfg.MaxEvents {
+		slog.Info("Rotating context file", "max_events", cfg.MaxEvents)
+		events = events[len(events)-cfg.MaxEvents:]
+	}
+
+	// Generate fresh boilerplate and stitch together
+	finalOutput := getBoilerplate(cfg)
+	for _, event := range events {
+		finalOutput += "\n### Sync Event: " + event
+	}
+
+	err = os.WriteFile(cfg.OutFile, []byte(finalOutput), 0644)
+	if err == nil {
+		slog.Info("Successfully synced files", "count", len(files), "out", cfg.OutFile)
+	}
+	return err
 }
 
 func getFileDiff(cache *FileCache, file string) string {
@@ -95,35 +129,4 @@ func getFileDiff(cache *FileCache, file string) string {
 	// Clean up patch text for better markdown formatting
 	patchText = strings.TrimSpace(patchText)
 	return fmt.Sprintf("- **%s**:\n```diff\n%s\n```\n", file, patchText)
-}
-
-// rotateContextFile ensures the context file doesn't exceed the configured MaxEvents
-func rotateContextFile(cfg Config) error {
-	content, err := os.ReadFile(cfg.OutFile)
-	if err != nil {
-		return err
-	}
-
-	strContent := string(content)
-	eventDelimiter := "\n### Sync Event:"
-	events := strings.Split(strContent, eventDelimiter)
-
-	// The first split chunk is everything before the first event (our boilerplate header)
-	// So len(events) - 1 is the number of actual sync events.
-	if len(events)-1 > cfg.MaxEvents {
-		slog.Info("Rotating context file", "max_events", cfg.MaxEvents)
-		
-		newContent := events[0]
-		// Slice off the oldest events, keeping only the last MaxEvents
-		keepEvents := events[len(events)-cfg.MaxEvents:]
-		for _, event := range keepEvents {
-			newContent += eventDelimiter + event
-		}
-
-		err = os.WriteFile(cfg.OutFile, []byte(newContent), 0644)
-		if err != nil {
-			return fmt.Errorf("failed to rotate file: %w", err)
-		}
-	}
-	return nil
 }

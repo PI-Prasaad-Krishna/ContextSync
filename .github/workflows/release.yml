@@ -55,7 +55,23 @@ jobs:
         mkdir build
         go build -o build/${{ matrix.name }} ./cmd/contextsync
         
-    - name: Upload Release Asset
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.name }}
+        path: build/${{ matrix.name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        merge-multiple: true
+
+    - name: Upload Release Assets
       uses: softprops/action-gh-release@v2
       with:
-        files: build/${{ matrix.name }}
+        files: artifacts/*

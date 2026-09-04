@@ -10,8 +10,6 @@ By pointing your AI agent to read this single file instead of the whole reposito
 
 ## Architecture
 
-[#architecture](#architecture)
-
 ContextSync runs as a background daemon with four stages:
 
 ![Architecture Flow](architecture-flow.svg)
@@ -35,8 +33,6 @@ An AI coding agent is pointed at `.context.md` instead of the full repository, s
 - JSON Configuration: Configure all behaviors in a lightweight `.contextsync.json` file to avoid typing long commands.
 
 ## The Cost Problem (Measured Benchmark)
-
-[#the-cost-problem-measured-benchmark](#the-cost-problem-measured-benchmark)
 
 *Measured on the ContextSync repo itself, 26 files, 3-file editing session:*
 

@@ -8,6 +8,23 @@ AI IDEs currently perform expensive full-repository semantic scans on every prom
 
 By pointing your AI agent to read this single file instead of the whole repository, it instantly knows exactly which files were modified, maximizing context efficiency.
 
+## Architecture
+
+[#architecture](#architecture)
+
+ContextSync runs as a background daemon with four stages:
+
+![Architecture Flow](architecture-flow.svg)
+
+1. **Watcher** — recursively monitors the project directory for file save events, dynamically attaching to newly created subfolders and respecting `.gitignore` rules.
+2. **Debouncer** — batches rapid successive saves (e.g. "Save All") into a single event within a configurable window (default 2s), preventing redundant processing.
+3. **Diff Engine** — computes incremental string diffs in memory against the last known state of each changed file, producing only the changed lines rather than full file contents.
+4. **Context Writer** — appends the diff as a timestamped entry to `.context.md`, prepending the static `Architecture.md` base context (if configured) so every write carries both long-term project understanding and the most recent changes. A rolling window rotation prunes the oldest entries once `max_events` is reached, keeping the file bounded.
+
+Flow: `File Save → Watcher → Debouncer → Diff Engine → Context Writer → .context.md`
+
+An AI coding agent is pointed at `.context.md` instead of the full repository, so every prompt carries only what actually changed.
+
 ## Features
 
 - Zero Dependencies: Written in Go, it compiles to a single binary. No need for `git` or external libraries.
@@ -17,13 +34,18 @@ By pointing your AI agent to read this single file instead of the whole reposito
 - Rolling Window Rotation: Automatically prunes the oldest sync events from the context file when it reaches your configured limit, preventing token bloat.
 - JSON Configuration: Configure all behaviors in a lightweight `.contextsync.json` file to avoid typing long commands.
 
-## The Proof (Why Use ContextSync?)
+## The Cost Problem (Measured Benchmark)
 
-Imagine a moderate-sized project with 100 source files.
-- **Cost of a Full-Repo AI Scan:** Providing 100 files (~250,000 tokens) to a modern LLM like GPT-4o costs roughly **$1.25 per prompt** and takes 10-15 seconds to process. It also runs a high risk of hallucination because the AI is overwhelmed by 97 untouched files.
-- **Cost with ContextSync:** You spend an hour coding and modify 3 files. ContextSync generates a `.context.md` file containing *only* the incremental diffs of the exact lines you changed (~1,200 tokens). Pointing the AI to this file costs **$0.006 per prompt** and processes instantly.
+[#the-cost-problem-measured-benchmark](#the-cost-problem-measured-benchmark)
 
-**Result:** A 99.5% reduction in token usage, instant response times, and hyper-focused AI context.
+*Measured on the ContextSync repo itself, 26 files, 3-file editing session:*
+
+- **Full-repo AI scan:** 9,875 tokens per prompt — processing takes longer and runs a higher risk of "Lost in the Middle" hallucination from 23 untouched files.
+- **With ContextSync:** a session touching 3 files produces a `.context.md` diff of only 1,014 tokens.
+
+**Result:** An **89.73%** reduction in tokens sent per prompt.
+
+This is the gap ContextSync is designed to close: pointing agents at exactly what changed, not the whole repository.
 
 ## Best Practices (Hybrid Memory)
 

@@ -91,9 +91,9 @@ func handleWatch(cfg Config, cache *FileCache) error {
 					}
 				}
 
-				if event.Op&fsnotify.Write != 0 || event.Op&fsnotify.Create != 0 {
-					if !isDir { // Only batch actual files
-						slog.Debug("Detected file save", "file", event.Name)
+				if event.Op&fsnotify.Write != 0 || event.Op&fsnotify.Create != 0 || event.Op&fsnotify.Remove != 0 || event.Op&fsnotify.Rename != 0 {
+					if !isDir { // Only batch actual files (deleted files will have isDir=false)
+						slog.Debug("Detected file change", "file", event.Name)
 						changedFiles[event.Name] = struct{}{}
 						timer.Reset(cfg.DebounceDuration)
 					}
